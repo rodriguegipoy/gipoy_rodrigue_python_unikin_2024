@@ -1,0 +1,365 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# # TP DE PYTHON AVANCE ELABORE PAR CT GIPOY MULENDA RODRIGUE DIRIGE PAR LE PROF MASAKUNA FELICIEN
+
+# # Enoncé
+# python : Analyse des sentiments sur les réseaux sociaux utilisation de données de medias sociaux pour analyser les tendances et les sentiments.
+
+# In[1]:
+
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from colorama import Fore
+import plotly.express as px
+
+import string
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+from nltk.sentiment import SentimentIntensityAnalyzer
+from nltk import tokenize
+from nltk.tokenize import sent_tokenize
+from nltk.tokenize import word_tokenize
+from tqdm.notebook import tqdm
+from collections import Counter
+from wordcloud import WordCloud
+
+nltk.download('vader_lexicon')
+nltk.download('punkt')
+nltk.download('stopwords')
+
+import warnings
+warnings.filterwarnings('ignore')
+
+
+# In[2]:
+
+
+df = pd.read_csv('sentimentdataset.csv')
+df
+
+
+# In[3]:
+
+
+df.duplicated().sum()
+
+
+# In[4]:
+
+
+def count_distinct_value():
+    for column in df.columns:
+        num_distinct_values = len(df[column].unique())
+        print(f"{column}: {num_distinct_values} distinct values")
+
+
+count_distinct_value()
+
+
+# In[5]:
+
+
+df = df.drop(columns=['Unnamed: 0.1', 'Unnamed: 0'])
+
+
+# In[6]:
+
+
+df
+
+
+# In[7]:
+
+
+df['Platform'].value_counts()
+
+
+# In[8]:
+
+
+df["Country"].value_counts()
+
+
+# In[9]:
+
+
+df['Country'].value_counts().nlargest(10).plot(kind='bar')
+plt.title('Pays')
+plt.xlabel('Pays')
+plt.ylabel('effectifs')
+plt.show()
+
+
+# In[10]:
+
+
+# Aggregation de pays
+df['Country'] = df['Country'].str.strip()
+
+
+# In[11]:
+
+
+df['Country'].value_counts().nlargest(10).plot(kind='bar')
+plt.title('Pays')
+plt.xlabel('Pays')
+plt.ylabel('Effectifs')
+plt.show()
+
+
+# In[12]:
+
+
+# Conversion de la colonne 'Timestamp' en datetime
+df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+# Analyse temporelle
+df['Hour'] = df['Timestamp'].dt.hour
+
+map_mois = {
+    1: 'Janvier',
+    2: 'Fevrier',
+    3: 'Mars',
+    4: 'Avril',
+    5: 'Mai',
+    6: 'Juin',
+    7: 'Juillet',
+    8: 'Août',
+    9: 'Septembre',
+    10: 'Octobre',
+    11: 'Novembre',
+    12: 'Decembre'
+}
+df['Month'] = df['Month'].map(map_mois)
+
+df['Month'] = df['Month'].astype('object')
+
+
+# In[13]:
+
+
+df_test = df.copy()
+
+def categorize_sentiment(sentiment):
+    positive_sentiments = ['Happiness', 'Joy', 'Love', 'Amusement', 'Enjoyment', 'Admiration', 'Affection', 'Awe',
+                           'Surprise', 'Acceptance', 'Adoration', 'Anticipation', 'Calmness', 'Excitement',
+                           'Kind', 'Pride', 'Shame', 'Elation', 'Euphoria', 'Contentment', 'Serenity', 'Gratitude',
+                           'Hope', 'Empowerment', 'Compassion', 'Tenderness', 'Arousal', 'Enthusiasm',
+                           'Fulfillment', 'Reverence', 'Hopeful', 'Proud', 'Grateful', 'Empathetic', 'Compassionate',
+                           'Playful', 'Free-spirited', 'Inspired', 'Confident']
+    negative_sentiments = ['Anger', 'Fear', 'Sadness', 'Disgust', 'Bitter', 'Confusion', 'Despair', 'Grief',
+                           'Loneliness', 'Jealousy', 'Resentment', 'Frustration', 'Boredom', 'Anxiety',
+                           'Intimidation', 'Helplessness', 'Envy', 'Regret', 'Hate', 'Bad', 'Fearful','Apprehensive', 'Overwhelmed', 'Jealous', 'Devastated', 'Frustrated', 'Envious',
+                           'Dismissive', 'Nervous', 'Worried', 'Tense', 'Stressed', 'Depressed', 'Miserable',
+                           'Lonely', 'Insecure', 'Guilty', 'Embarrassed', 'Mischievous', 'Sad']
+    
+    if sentiment.strip() in positive_sentiments:
+        return 'Positive'
+    elif sentiment.strip() in negative_sentiments:
+        return 'Negative'
+    else:
+        return 'Neutral'
+
+# Appliquer la fonction de regroupement sur la colonne des sentiments
+df_test['Sentiment_Category'] = df_test['Sentiment'].apply(categorize_sentiment)
+# Création de colonnes pour indiquer si le sentiment est positif, négatif ou neutre
+df_test['Positive'] = df_test['Sentiment_Category'] == 'Positive'
+df_test['Negative'] = df_test['Sentiment_Category'] == 'Negative'
+df_test['Neutral'] = df_test['Sentiment_Category'] == 'Neutral'
+
+df_test.head()
+
+
+# In[14]:
+
+
+# Utilisation de PorterStemer et le stopwords des extensions de NLTK pour retirer les charactères 
+stemmer = PorterStemmer()
+stop_words = set(stopwords.words('english'))
+
+def clean(text):
+    text = str(text).lower()
+    text = re.sub('\[.*?\]', '', text)
+    text = re.sub('https?://\S+|www\.\S+', '', text)
+    text = re.sub(r'\s+', ' ', text.strip())
+    text = re.sub('<.*?>+', '', text)
+    text = re.sub('[%s]' % re.escape(string.punctuation), '', text)
+    text = re.sub('\n', '', text)
+    text = re.sub('\w*\d\w*', '', text)
+    text = re.sub(r'[^\x00-\x7F]+', '', text)  
+    text = " ".join(text.split())
+    tokens = word_tokenize(text)
+    cleaned_tokens = [stemmer.stem(token) for token in tokens if token.lower() not in stop_words]
+   
+    cleaned_text = ' '.join(cleaned_tokens)
+    
+    return cleaned_text
+
+
+# In[15]:
+
+
+df["Clean_Text"] = df["Text"]
+
+
+# In[16]:
+
+
+colonne_special= ['Platform','Country', 'Year','Month','Day']
+
+for col in colonne_special:
+    total_unique_values = df[col].nunique()
+    print(f'Total unique values for {col}: {total_unique_values}')
+
+    top_values = df[col].value_counts()
+
+    colors = [Fore.RED, Fore.GREEN, Fore.YELLOW, Fore.BLUE, Fore.MAGENTA, Fore.CYAN, Fore.WHITE, Fore.LIGHTBLACK_EX, Fore.LIGHTRED_EX, Fore.LIGHTGREEN_EX]
+
+    for i, (value, count) in enumerate(top_values.items()):
+        color = colors[i % len(colors)]
+        print(f'{color}{value}: {count}{Fore.RESET}')
+
+    print('\n' + '=' * 30 + '\n')  
+
+
+# In[17]:
+
+
+# Separation de l'analyse dans une copy de du jeux de donnée acutel
+df_sentiment = df.copy()
+
+analyzer = SentimentIntensityAnalyzer()
+
+df_sentiment['Vader_Score'] = df_sentiment['Clean_Text'].apply(lambda text: analyzer.polarity_scores(text)['compound'])
+
+df_sentiment['Sentiment'] = df_sentiment['Vader_Score'].apply(lambda score: 'positive' if score >= 0.05 else ('negative' if score <= -0.05 else 'neutral'))
+
+print(df_sentiment[['Clean_Text', 'Vader_Score', 'Sentiment']].head(10))
+
+
+# In[18]:
+
+
+# Repartition Proportionnelle des sentiments 
+colors = ['#37B209', '#097CB2', '#FF0000']
+
+explode = (0.1, 0, 0)  
+
+sentiment_counts = df_sentiment.groupby("Sentiment").size()
+
+fig, ax = plt.subplots()
+
+wedges, texts, autotexts = ax.pie(
+    x=sentiment_counts, 
+    labels=sentiment_counts.index,
+    autopct=lambda p: f'{p:.2f}%\n({int(p*sum(sentiment_counts)/100)})', 
+    wedgeprops=dict(width=1),
+    textprops=dict(size=10, color="black"),  
+    pctdistance=0.7,
+    colors=colors,
+    explode=explode,
+    shadow=True)
+
+
+# In[19]:
+
+
+center_circle = plt.Circle((0, 0), 0.6, color='white', fc='white', linewidth=1.25)
+fig.gca().add_artist(center_circle)
+ax.text(0, 0, 'Sentiment\nDistribution', ha='center', va='center', fontsize=14, fontweight='bold', color='#333333')
+
+ax.legend(sentiment_counts.index, title="Sentiment", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+
+ax.axis('equal')  
+
+plt.show()
+
+
+# In[20]:
+
+
+plt.figure(figsize=(12, 6))
+sns.countplot(x='Year', hue='Sentiment', data=df_sentiment)
+plt.title('sentiment au fil des années')
+plt.xlabel('Graphique 1 : Année')
+plt.ylabel('Valeurs')
+plt.xticks(rotation=45)
+plt.show()
+
+
+# In[21]:
+
+
+plt.figure(figsize=(12, 6))
+sns.countplot(x='Month', hue='Sentiment', data=df_sentiment)
+plt.title('evolution des sentiments dans les mois')
+plt.xlabel('Graphique 2 : Mois')
+plt.ylabel('Valeurs')
+plt.xticks(rotation=45)
+plt.show()
+
+
+# In[22]:
+
+
+plt.figure(figsize=(12, 6))
+sns.countplot(x='Platform', hue='Sentiment', data=df_sentiment)
+plt.title('Relation entre les sentiments et les differents réseaux sociaux')
+plt.xlabel('Graphique 3 :Réseaux social')
+plt.ylabel('Valeurs')
+plt.xticks(rotation=45)
+plt.show()
+
+
+# CONCLUSION
+# 
+# Par rapport au données à notre disposition , nous pouvons observer à travers le Graphique 1, que les sentiments positives sur le media sociaux reste largement superieur au fil des années avec une montée remarquable en 2023. La même observation est faite dans les mois des années. Le graphique 3 montre egalement une expression positive des internautes d'instagram avec une tendance de plus en plus croissante d'utilisation du media sacial animé d'un sentiment positive . 
+
+# In[23]:
+
+
+import nbformat
+
+
+# In[24]:
+
+
+with open('TP_PYTHON_Analyse_Sentiment.ipynb', 'r', encoding='utf-8') as f:
+    notebook = nbformat.read(f, as_version=4)
+
+
+# In[25]:
+
+
+text_content = ""
+for cell in notebook.cells:
+    if cell.cell_type == 'code':
+        text_content += f"### CODE CELL ###\n{cell.source}\n\n"
+    elif cell.cell_type == 'markdown':
+        text_content += f"### MARKDOWN CELL ###\n{cell.source}\n\n"
+
+
+# In[26]:
+
+
+with open('TP_PYTHON_Analyse_Sentiment.txt', 'w', encoding='utf-8') as f:
+    f.write(text_content)
+
+
+# In[27]:
+
+
+print("Le contenu du notebook a été extrait avec succès dans le fichier 'TP_PYTHON_Analyse_Sentiment.txt'.")
+
+
+# In[ ]:
+
+
+
+
